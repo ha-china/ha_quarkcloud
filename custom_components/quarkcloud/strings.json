@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "授权夸克网盘",
-        "description": "1. 点击打开授权链接：[{authorize_url}]({authorize_url})\n\n2. 用「夸克网盘」App 扫码确认授权\n\n3. 授权后会得到一个 `AAC-` 开头的授权码，粘贴到下方",
+        "description": "1. 点击下方链接，用浏览器打开：\n\n[打开授权链接]({authorize_url})\n\n2. 用「夸克网盘」App 扫码确认授权\n\n3. 授权后会得到一个 `AAC-` 开头的授权码，粘贴到下方",
         "data": {
           "auth_code": "授权码（AAC-开头）"
         }

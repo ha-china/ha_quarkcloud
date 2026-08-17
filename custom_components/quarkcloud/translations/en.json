@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Authorize Quark Cloud Drive",
-        "description": "1. Open the authorization link: [{authorize_url}]({authorize_url})\n\n2. Scan the QR code with the Quark Drive app and confirm\n\n3. Paste the authorization code (starts with `AAC-`) you received below",
+        "description": "1. Open the link below in your browser:\n\n[Open authorization link]({authorize_url})\n\n2. Scan the QR code with the Quark Drive app and confirm\n\n3. Paste the authorization code (starts with `AAC-`) you received below",
         "data": {
           "auth_code": "Authorization code (AAC-)"
         }
