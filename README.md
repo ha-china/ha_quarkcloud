@@ -19,6 +19,8 @@
 
 设备 "Quark Cloud Drive" 下提供 8 个实体：
 
+![设备信息](img/device_info.png)
+
 | 实体 | 说明 |
 |---|---|
 | 账号昵称 | 登录账号昵称 |
