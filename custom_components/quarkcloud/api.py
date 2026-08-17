@@ -765,7 +765,7 @@ class QuarkCloudApi:
             target, whole, pre.get("common_headers") or {}
         )
         if on_progress:
-            on_progress(size)
+            on_progress(bytes_uploaded=size)
         finish = await self._request(
             "POST",
             PATH_UPLOAD_FINISH,
@@ -897,7 +897,7 @@ class QuarkCloudApi:
                     raise last_err
             uploaded += len(chunk)
             if on_progress:
-                on_progress(uploaded)
+                on_progress(bytes_uploaded=uploaded)
             return {"part_number": n, "etag": etag}
 
         connector = aiohttp.TCPConnector(limit=MAX_CONCURRENT_PART_UPLOADS)
