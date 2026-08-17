@@ -1,0 +1,10 @@
+# Quark official skill archive (protocol reference only)
+quarkclouddrive-1.0.12/
+quarkclouddrive-1.0.12.zip
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Home Assistant
+*.storage/

@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    paths:
+      - 'custom_components/quarkcloud/manifest.json'
+  release:
+    types: [published]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from manifest
+        id: extract_version
+        if: github.event_name == 'push'
+        run: |
+          version=$(jq -r '.version' custom_components/quarkcloud/manifest.json)
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Check if tag exists
+        id: check_tag
+        if: github.event_name == 'push'
+        run: |
+          version="${{ steps.extract_version.outputs.version }}"
+          if git rev-parse "$version" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        if: github.event_name == 'push' && steps.check_tag.outputs.exists == 'false'
+        run: |
+          prev_tag=$(git tag --sort=-v:refname | head -1)
+          if [ -n "$prev_tag" ]; then
+            log=$(git log "$prev_tag..HEAD" --oneline --no-decorate --format="* %s")
+          else
+            log=$(git log --oneline --no-decorate --format="* %s")
+          fi
+          {
+            echo 'changelog<<EOF'
+            echo "$log"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Create tag
+        if: github.event_name == 'push' && steps.check_tag.outputs.exists == 'false'
+        run: |
+          version="${{ steps.extract_version.outputs.version }}"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a "$version" -m "Release $version"
+          git push origin "$version"
+
+      - name: Create zip
+        run: |
+          cd "${{ github.workspace }}/custom_components/quarkcloud"
+          zip -r quarkcloud.zip ./
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: ${{ steps.extract_version.outputs.version }}
+          name: Release ${{ steps.extract_version.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+          files: ${{ github.workspace }}/custom_components/quarkcloud/quarkcloud.zip
+
+      - name: Upload release asset to existing release
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@2.11.5
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ github.workspace }}/custom_components/quarkcloud/quarkcloud.zip
+          asset_name: quarkcloud.zip
+          tag: ${{ github.ref }}
+          overwrite: true

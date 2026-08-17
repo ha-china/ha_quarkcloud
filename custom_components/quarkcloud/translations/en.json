@@ -1,0 +1,80 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Authorize Quark Cloud Drive",
+        "description": "1. Open the authorization link: [{authorize_url}]({authorize_url})\n\n2. Scan the QR code with the Quark Drive app and confirm\n\n3. Paste the authorization code (starts with `AAC-`) you received below",
+        "data": {
+          "auth_code": "Authorization code (AAC-)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Quark Cloud Drive. Check your network and retry.",
+      "invalid_auth_code": "The authorization code is invalid. Scan again to get a new one; codes can only be used once.",
+      "expired": "The authorization code has expired. Scan again to get a new one.",
+      "already_authorized": "This account is already authorized for this device. Revoke the authorization in the Quark app (Me → Login authorization management) or remove and re-add this integration entry."
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Quark Cloud Drive instance can be configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "nickname": {
+        "name": "Account nickname"
+      },
+      "membership": {
+        "name": "Membership",
+        "state": {
+          "NORMAL": "Normal",
+          "VIP": "Member",
+          "SVIP": "Super VIP",
+          "88VIP": "88VIP Member",
+          "PARTNER": "Partner"
+        }
+      },
+      "membership_expiry": {
+        "name": "Membership expires"
+      },
+      "account_created": {
+        "name": "Account created"
+      },
+      "backup_count": {
+        "name": "Cloud backups"
+      },
+      "used": {
+        "name": "Used space"
+      },
+      "capacity": {
+        "name": "Total space"
+      },
+      "usage_percent": {
+        "name": "Space usage"
+      }
+    }
+  },
+  "exceptions": {
+    "download_size_limit": {
+      "message": "The Quark open platform limits API downloads to {limit_mb}MB per file; this backup ({size_mb}MB) cannot be restored via API. Download it manually from the Quark Drive web/app, or reduce the backup size."
+    },
+    "upload_failed": {
+      "message": "Failed to upload backup: {error}"
+    },
+    "download_no_url": {
+      "message": "The server returned no download url"
+    },
+    "download_all_urls_failed": {
+      "message": "All download urls failed"
+    },
+    "delete_failed": {
+      "message": "Failed to delete backup: {error}"
+    },
+    "setup_auth_failed": {
+      "message": "Authentication failed: {error}"
+    },
+    "setup_connect_failed": {
+      "message": "Cannot reach Quark Cloud Drive: {error}"
+    }
+  }
+}

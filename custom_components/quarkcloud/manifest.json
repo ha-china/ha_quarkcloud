@@ -1,0 +1,13 @@
+{
+  "domain": "quarkcloud",
+  "name": "Quark Cloud Drive",
+  "codeowners": ["@ha-china"],
+  "config_flow": true,
+  "dependencies": ["backup"],
+  "documentation": "https://github.com/ha-china/ha_quarkcloud",
+  "issue_tracker": "https://github.com/ha-china/ha_quarkcloud/issues",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "0.9.0"
+}

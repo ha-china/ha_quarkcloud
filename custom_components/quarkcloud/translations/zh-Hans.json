@@ -1,0 +1,80 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "授权夸克网盘",
+        "description": "1. 点击打开授权链接：[{authorize_url}]({authorize_url})\n\n2. 用「夸克网盘」App 扫码确认授权\n\n3. 授权后会得到一个 `AAC-` 开头的授权码，粘贴到下方",
+        "data": {
+          "auth_code": "授权码（AAC-开头）"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接夸克网盘服务，请检查网络后重试。",
+      "invalid_auth_code": "授权码无效，请重新扫码获取。授权码只能使用一次。",
+      "expired": "授权码已过期，请重新扫码获取新的授权码。",
+      "already_authorized": "该账号已授权过此设备。请先在夸克App中解除授权（我的 → 登录授权管理），或删除本集成条目后重新添加。"
+    },
+    "abort": {
+      "single_instance_allowed": "只能配置一个夸克网盘实例。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "nickname": {
+        "name": "账号昵称"
+      },
+      "membership": {
+        "name": "会员类型",
+        "state": {
+          "NORMAL": "普通用户",
+          "VIP": "会员",
+          "SVIP": "超级会员",
+          "88VIP": "88VIP 会员",
+          "PARTNER": "合作伙伴"
+        }
+      },
+      "membership_expiry": {
+        "name": "会员到期时间"
+      },
+      "account_created": {
+        "name": "账号注册时间"
+      },
+      "backup_count": {
+        "name": "云盘备份数"
+      },
+      "used": {
+        "name": "已用容量"
+      },
+      "capacity": {
+        "name": "总容量"
+      },
+      "usage_percent": {
+        "name": "容量使用率"
+      }
+    }
+  },
+  "exceptions": {
+    "download_size_limit": {
+      "message": "夸克开放平台单文件下载限制为 {limit_mb}MB，此备份（{size_mb}MB）无法通过 API 下载恢复；请从夸克网盘网页版/App 手动下载，或减小备份体积"
+    },
+    "upload_failed": {
+      "message": "备份上传失败：{error}"
+    },
+    "download_no_url": {
+      "message": "服务端未返回下载链接"
+    },
+    "download_all_urls_failed": {
+      "message": "所有下载链接均不可用"
+    },
+    "delete_failed": {
+      "message": "备份删除失败：{error}"
+    },
+    "setup_auth_failed": {
+      "message": "认证失败：{error}"
+    },
+    "setup_connect_failed": {
+      "message": "无法连接夸克网盘：{error}"
+    }
+  }
+}
