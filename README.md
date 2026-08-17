@@ -7,6 +7,9 @@
 ### 云端备份（Backup Agent）
 
 - 在 HA 的备份（设置 → 系统 → 备份）中选择 Quark Cloud Drive 作为备份目标
+
+  ![启用备份](img/enable_backup.png)
+
 - 备份存放在网盘根目录的 `home_assistant_backups` 文件夹（`ha_backup_*.tar` + 同名 `.metadata.json`）
 - 大文件分片并发上传、失败自动重试、秒传（内容相同时免重复上传）
 - token 过期自动轮换并持久化，重启不失效
