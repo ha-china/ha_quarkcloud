@@ -2,34 +2,6 @@
 
 [Quark Cloud Drive](https://pan.quark.cn)（夸克网盘）的 Home Assistant 自定义集成，提供**云端备份代理**和网盘信息传感器。
 
-## 功能
-
-### 云端备份（Backup Agent）
-
-- 在 HA 的备份（设置 → 系统 → 备份）中选择 Quark Cloud Drive 作为备份目标
-
-  ![启用备份](img/enable_backup.png)
-
-- 备份存放在网盘根目录的 `home_assistant_backups` 文件夹（`ha_backup_*.tar` + 同名 `.metadata.json`）
-- 大文件分片并发上传、失败自动重试、秒传（内容相同时免重复上传）
-- token 过期自动轮换并持久化，重启不失效
-- 支持备份列表与删除（删除失败时自动回退为移入网盘回收站文件夹）
-
-### 网盘信息传感器
-
-设备 "Quark Cloud Drive" 下提供 8 个实体：
-
-![设备信息](img/device_info.png)
-
-| 实体 | 说明 |
-|---|---|
-| 账号昵称 | 登录账号昵称 |
-| 会员类型 | NORMAL / VIP / SVIP / 88VIP / PARTNER（多语言显示） |
-| 会员到期时间 | timestamp |
-| 账号注册时间 | timestamp |
-| 已用容量 / 总容量 / 容量使用率 | GB / GB / % |
-| 云盘备份数 | 网盘中 HA 备份 `.tar` 计数 |
-
 ## 安装
 
 ### HACS 安装（推荐）
@@ -52,8 +24,6 @@
 2. 重启 Home Assistant。
 
 ## 添加集成
-
-重启后，在 Home Assistant 中添加集成：
 
 1. 设置 → 设备与服务 → 右下角 **添加集成**
 
@@ -78,6 +48,34 @@
    ![填写授权码](img/fill_the_code.png)
 
 7. 集成兑换授权码完成登录（授权码一次性、短时效，过期重新扫码即可）
+
+## 使用
+
+### 云端备份（Backup Agent）
+
+在 HA 的备份（设置 → 系统 → 备份）中选择 Quark Cloud Drive 作为备份目标：
+
+![启用备份](img/enable_backup.png)
+
+- 备份存放在网盘根目录的 `home_assistant_backups` 文件夹（`ha_backup_*.tar` + 同名 `.metadata.json`）
+- 大文件分片并发上传、失败自动重试、秒传（内容相同时免重复上传）
+- token 过期自动轮换并持久化，重启不失效
+- 支持备份列表与删除（删除失败时自动回退为移入网盘回收站文件夹）
+
+### 网盘信息传感器
+
+添加集成后，自动创建设备 "Quark Cloud Drive"，下挂 8 个实体：
+
+![设备信息](img/device_info.png)
+
+| 实体 | 说明 |
+|---|---|
+| 账号昵称 | 登录账号昵称 |
+| 会员类型 | NORMAL / VIP / SVIP / 88VIP / PARTNER（多语言显示） |
+| 会员到期时间 | timestamp |
+| 账号注册时间 | timestamp |
+| 已用容量 / 总容量 / 容量使用率 | GB / GB / % |
+| 云盘备份数 | 网盘中 HA 备份 `.tar` 计数 |
 
 ## 已知限制
 
