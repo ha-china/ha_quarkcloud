@@ -52,6 +52,8 @@ from .const import (
     UPLOAD_TIMEOUT,
     FORM_UPLOAD_SIZE_LIMIT,
     MAX_CONCURRENT_PART_UPLOADS,
+    ROTATE_COOLDOWN,
+    ROTATE_COOLDOWN_OK,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -186,6 +188,7 @@ class QuarkCloudApi:
         self._user_id = user_id
         self._on_tokens_updated = on_tokens_updated
         self._rotating = False
+        self._rotate_cooldown_until = 0.0
 
     @property
     def user_id(self) -> str:
@@ -384,13 +387,25 @@ class QuarkCloudApi:
         )
 
     async def _rotate_and_notify(self) -> None:
+        """Rotate the refresh token; failures never break the caller.
+
+        The server rate-limits rotation while the current access token is
+        still valid ("Refresh token rotation rate limited"). In that case we
+        keep the existing token and let the caller retry its request with it
+        instead of raising and killing an otherwise valid call.
+        """
         if self._rotating:
             return
+        now = time.monotonic()
+        if now < self._rotate_cooldown_until:
+            return
         self._rotating = True
+        self._rotate_cooldown_until = now + ROTATE_COOLDOWN
         try:
             result = await self.rotate_refresh_token(
                 self._refresh_token, self._device_id
             )
+            self._rotate_cooldown_until = now + ROTATE_COOLDOWN_OK
             self.set_tokens(
                 result["access_token"],
                 result.get("refresh_token", ""),
@@ -401,6 +416,8 @@ class QuarkCloudApi:
                 self._on_tokens_updated(
                     self._access_token, self._refresh_token, self._user_id, self._device_id
                 )
+        except QuarkAuthError as err:
+            _LOGGER.debug("Token rotation skipped, retrying with current token: %s", err)
         finally:
             self._rotating = False
 
