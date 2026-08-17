@@ -423,16 +423,26 @@ class QuarkCloudApi:
     # ------------------------------------------------------------------
 
     async def get_authorize_page_url(
-        self, device_name: str = "Home Assistant"
+        self,
+        device_name: str = "Home Assistant",
+        current_user_id: str = "",
     ) -> dict[str, str]:
-        """Return the authorize page url the user opens to scan the QR code."""
-        body = {
+        """Return the authorize page url the user opens to scan the QR code.
+
+        CLI parity: ``is_cloud_agent``/``is_unsure_agent`` are always sent
+        (stringified booleans); ``current_user_id`` only when one exists.
+        """
+        body: dict[str, Any] = {
             "client_device_id": self._device_id,
             "device_name": device_name,
             "agent_id": AGENT_ID,
             "client_id": CLIENT_ID,
             "work_dir": "/config",
+            "is_cloud_agent": "false",
+            "is_unsure_agent": "false",
         }
+        if current_user_id:
+            body["current_user_id"] = current_user_id
         data = await self._raw_request(
             "POST", PATH_GET_AUTHORIZE_PAGE_URL, auth_free=True, body=body
         )
@@ -546,12 +556,16 @@ class QuarkCloudApi:
         return await self._request("GET", PATH_VIP_INFO)
 
     async def search_files(
-        self, keyword: str, size: int = 50, category: int | None = None
+        self,
+        keyword: str,
+        size: int = 50,
+        category: int | None = None,
+        page: int | None = None,
     ) -> dict[str, Any]:
         """POST /agent/v1/file/search.
 
-        CLI parity: the CLI never sends ``page`` (server default applies),
-        so neither do we.
+        CLI parity: wrapper passes ``{keyword, size||10, category, page}``;
+        undefined fields (category/page) are dropped by JSON.stringify.
         """
         body: dict[str, Any] = {
             "search_type": "mix",
@@ -560,6 +574,8 @@ class QuarkCloudApi:
         }
         if category is not None:
             body["category"] = category
+        if page is not None:
+            body["page"] = page
         return await self._request("POST", PATH_FILE_SEARCH, body=body)
 
     async def create_folder(
@@ -578,13 +594,18 @@ class QuarkCloudApi:
     async def move_files(
         self, fid_list: list[str], to_pdir_fid: str, action_type: int = 1
     ) -> dict[str, Any]:
+        """POST /open/v1/file/move.
+
+        CLI parity: body key order ``fid_list, to_pdir_fid, action_type``
+        (FileBrowser.moveFiles -> api.moveFiles).
+        """
         return await self._request(
             "POST",
             PATH_FILE_MOVE,
             body={
-                "action_type": action_type,
                 "fid_list": fid_list,
                 "to_pdir_fid": to_pdir_fid,
+                "action_type": action_type,
             },
         )
 
