@@ -52,8 +52,6 @@ from .const import (
     UPLOAD_TIMEOUT,
     FORM_UPLOAD_SIZE_LIMIT,
     MAX_CONCURRENT_PART_UPLOADS,
-    ROTATE_COOLDOWN,
-    ROTATE_COOLDOWN_OK,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -188,7 +186,6 @@ class QuarkCloudApi:
         self._user_id = user_id
         self._on_tokens_updated = on_tokens_updated
         self._rotating = False
-        self._rotate_cooldown_until = 0.0
 
     @property
     def user_id(self) -> str:
@@ -338,21 +335,31 @@ class QuarkCloudApi:
         body: dict[str, Any] | None = None,
         timeout: int = REQUEST_TIMEOUT,
     ) -> dict[str, Any]:
-        """Signed request with automatic token rotation and one retry."""
-        try:
-            data = await self._raw_request(
-                method, path, no_query_auth=no_query_auth,
-                include_device_id=include_device_id, params=params,
-                body=body, timeout=timeout,
-            )
-        except QuarkAuthError:
-            await self._rotate_and_notify()
-            data = await self._raw_request(
-                method, path, no_query_auth=no_query_auth,
-                include_device_id=include_device_id, params=params,
-                body=body, timeout=timeout,
-            )
-        if data.get("status") != 0:
+        """Signed request with token rotation and one replay.
+
+        CLI parity (node network adapter ``handleTokenRefreshReplay`` /
+        ``pA``): errno 11000 means "not authenticated" and propagates
+        immediately; the rotate+replay set is {11001, 11017, 12003, 12004}
+        and each request is replayed at most once. A failing rotation is
+        logged, not raised - the request is replayed with the current
+        token regardless (the server keeps it valid for a grace period).
+        """
+        retried = False
+        while True:
+            try:
+                data = await self._raw_request(
+                    method, path, no_query_auth=no_query_auth,
+                    include_device_id=include_device_id, params=params,
+                    body=body, timeout=timeout,
+                )
+            except QuarkAuthError:
+                if retried:
+                    raise
+                retried = True
+                await self._rotate_and_notify()
+                continue
+            if data.get("status") == 0:
+                return data.get("data") or {}
             error_info = (
                 data.get("error_info")
                 or data.get("agent_msg")
@@ -360,23 +367,17 @@ class QuarkCloudApi:
                 or f"status={data.get('status')}"
             )
             errno = data.get("errno")
-            # CLI parity: errno 11000 triggers throwAccessTokenNotAuth;
-            # 11001/11017 signal (grace-period) token expiry and force a
-            # refresh + retry before giving up.
-            if errno in (11000, 11001, 11017) or self._looks_like_auth_error(error_info):
+            if errno == 11000:
+                # CLI parity: handleAccessTokenNotAuth - relogin required.
+                raise QuarkAuthError(error_info)
+            if not retried and (
+                errno in (11001, 11017, 12003, 12004)
+                or self._looks_like_auth_error(error_info)
+            ):
+                retried = True
                 await self._rotate_and_notify()
-                data = await self._raw_request(
-                    method, path, no_query_auth=no_query_auth,
-                    include_device_id=include_device_id, params=params,
-                    body=body, timeout=timeout,
-                )
-                if data.get("status") != 0:
-                    raise QuarkApiError(
-                        data.get("error_info") or f"{path} failed"
-                    )
-                return data.get("data") or {}
+                continue
             raise QuarkApiError(error_info)
-        return data.get("data") or {}
 
     @staticmethod
     def _looks_like_auth_error(message: str) -> bool:
@@ -389,23 +390,19 @@ class QuarkCloudApi:
     async def _rotate_and_notify(self) -> None:
         """Rotate the refresh token; failures never break the caller.
 
-        The server rate-limits rotation while the current access token is
-        still valid ("Refresh token rotation rate limited"). In that case we
-        keep the existing token and let the caller retry its request with it
-        instead of raising and killing an otherwise valid call.
+        CLI parity (``handleTokenRefreshReplay``): a failing rotation is
+        only logged, and the original request is replayed with the current
+        token regardless - the server keeps it valid during a grace
+        period ("Refresh token rotation rate limited, current access
+        token still valid").
         """
         if self._rotating:
             return
-        now = time.monotonic()
-        if now < self._rotate_cooldown_until:
-            return
         self._rotating = True
-        self._rotate_cooldown_until = now + ROTATE_COOLDOWN
         try:
             result = await self.rotate_refresh_token(
                 self._refresh_token, self._device_id
             )
-            self._rotate_cooldown_until = now + ROTATE_COOLDOWN_OK
             self.set_tokens(
                 result["access_token"],
                 result.get("refresh_token", ""),
@@ -417,7 +414,7 @@ class QuarkCloudApi:
                     self._access_token, self._refresh_token, self._user_id, self._device_id
                 )
         except QuarkAuthError as err:
-            _LOGGER.debug("Token rotation skipped, retrying with current token: %s", err)
+            _LOGGER.debug("Token rotation failed, replaying with current token: %s", err)
         finally:
             self._rotating = False
 

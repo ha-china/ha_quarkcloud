@@ -59,8 +59,3 @@ FORM_UPLOAD_SIZE_LIMIT: Final = 10 * 1024 * 1024
 
 # CLI parity: fn.maxConcurrentPartSize - concurrent part uploads.
 MAX_CONCURRENT_PART_UPLOADS: Final = 6
-
-# Token rotation cooldowns (seconds): long backoff after a failed/rate
-# limited rotation attempt, short one after a successful rotation.
-ROTATE_COOLDOWN: Final = 300
-ROTATE_COOLDOWN_OK: Final = 60
