@@ -27,11 +27,11 @@
       "membership": {
         "name": "Membership",
         "state": {
-          "NORMAL": "Normal",
-          "VIP": "Member",
-          "SVIP": "Super VIP",
-          "88VIP": "88VIP Member",
-          "PARTNER": "Partner"
+          "normal": "Normal",
+          "vip": "Member",
+          "svip": "Super VIP",
+          "88vip": "88VIP Member",
+          "partner": "Partner"
         }
       },
       "membership_expiry": {

@@ -27,11 +27,11 @@
       "membership": {
         "name": "会员类型",
         "state": {
-          "NORMAL": "普通用户",
-          "VIP": "会员",
-          "SVIP": "超级会员",
-          "88VIP": "88VIP 会员",
-          "PARTNER": "合作伙伴"
+          "normal": "普通用户",
+          "vip": "会员",
+          "svip": "超级会员",
+          "88vip": "88VIP 会员",
+          "partner": "合作伙伴"
         }
       },
       "membership_expiry": {

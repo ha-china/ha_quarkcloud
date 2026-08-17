@@ -38,7 +38,8 @@ _LOGGER = logging.getLogger(__name__)
 UPDATE_INTERVAL = timedelta(minutes=30)
 
 # Known vip_type values; unknown ones still display as the raw server value.
-VIP_OPTIONS = ["NORMAL", "VIP", "SVIP", "88VIP", "PARTNER"]
+# Keys must be lowercase (hassfest requirement for translation state keys).
+VIP_OPTIONS = ["normal", "vip", "svip", "88vip", "partner"]
 
 
 def _parse_created_at(value: Any) -> datetime | None:
@@ -217,7 +218,8 @@ class QuarkSensor(CoordinatorEntity[DataUpdateCoordinator], SensorEntity):
         if key == "nickname":
             return data.get("nickname") or None
         if key == "membership":
-            return data.get("vip_type") or None
+            raw = data.get("vip_type")
+            return raw.lower() if raw else None
         if key == "usage_percent":
             used = data.get("used")
             capacity = data.get("capacity")
@@ -239,6 +241,7 @@ class QuarkMembershipSensor(QuarkSensor):
     def options(self) -> list[str]:
         """Enum options; extend with unknown server values at runtime."""
         raw = (self.coordinator.data or {}).get("vip_type")
-        if raw and raw not in VIP_OPTIONS:
-            return [*VIP_OPTIONS, raw]
+        raw_lower = raw.lower() if raw else None
+        if raw_lower and raw_lower not in VIP_OPTIONS:
+            return [*VIP_OPTIONS, raw_lower]
         return VIP_OPTIONS
