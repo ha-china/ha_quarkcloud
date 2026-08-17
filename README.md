@@ -32,7 +32,7 @@
 [![打开 Home Assistant 并添加仓库](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ha-china&repository=ha_quarkcloud&category=integration)
 
 1. HACS → ⋮ → 自定义仓库
-2. 仓库填本项目的 GitHub 地址，类别选 **集成**，添加
+2. 仓库填 `https://github.com/ha-china/ha_quarkcloud`，类别选 **集成**，添加
 3. 在 HACS 搜索 **Quark Cloud Drive** 并下载
 4. 重启 Home Assistant
 
@@ -46,13 +46,33 @@
 
 2. 重启 Home Assistant。
 
-## 授权（扫码流程）
+## 添加集成
 
-1. 设置 → 设备与服务 → 添加集成 → 搜索 **Quark Cloud Drive**
-2. 集成会显示夸克授权链接
-3. 打开链接，用**夸克网盘 App / 夸克 App** 扫码并确认授权
-4. 授权后会得到一个 `AAC-` 开头的授权码，粘贴回 HA 表单
-5. 集成兑换授权码完成登录（授权码一次性、短时效，过期重新扫码即可）
+重启后，在 Home Assistant 中添加集成：
+
+1. 设置 → 设备与服务 → 右下角 **添加集成**
+
+   ![添加集成](img/add_integration.png)
+
+2. 搜索 **Quark Cloud Drive** 并点击
+
+3. 点击授权链接，在浏览器中打开
+
+   ![打开授权链接](img/open_the_link.png)
+
+4. 用 **夸克网盘 App / 夸克 App** 扫码确认授权
+
+   ![扫码授权](img/scan_qrcode.png)
+
+5. 授权后会得到一个 `AAC-` 开头的授权码，复制它
+
+   ![复制授权码](img/get_code.png)
+
+6. 将授权码粘贴到 HA 表单中
+
+   ![填写授权码](img/fill_the_code.png)
+
+7. 集成兑换授权码完成登录（授权码一次性、短时效，过期重新扫码即可）
 
 无需填写 Client ID / Secret。
 
