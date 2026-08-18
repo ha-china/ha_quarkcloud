@@ -36,7 +36,19 @@ async def async_setup_entry(
     def persist_tokens(
         access_token: str, refresh_token: str, user_id: str, device_id: str
     ) -> None:
-        """Persist rotated tokens so restarts keep working."""
+        """Persist rotated tokens so restarts keep working.
+
+        CLI parity (``updatePersistedAccessToken``): skip the write when
+        the token is unchanged, so rotations do not spam config entry
+        updates (each of which notifies backup listeners / reloads state).
+        """
+        if (
+            entry.data.get(CONF_ACCESS_TOKEN) == access_token
+            and entry.data.get(CONF_REFRESH_TOKEN) == refresh_token
+            and entry.data.get(CONF_USER_ID) == user_id
+            and entry.data.get(CONF_DEVICE_ID) == device_id
+        ):
+            return
         hass.config_entries.async_update_entry(
             entry,
             data={
