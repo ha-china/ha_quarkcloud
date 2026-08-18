@@ -61,6 +61,9 @@
     "upload_failed": {
       "message": "Failed to upload backup: {error}"
     },
+    "upload_capacity_limit": {
+      "message": "Quark Cloud Drive is full; this backup ({size_mb}MB) cannot be uploaded. Free up space or upgrade your plan, then retry."
+    },
     "download_no_url": {
       "message": "The server returned no download url"
     },

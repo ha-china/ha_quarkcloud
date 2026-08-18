@@ -61,6 +61,9 @@
     "upload_failed": {
       "message": "备份上传失败：{error}"
     },
+    "upload_capacity_limit": {
+      "message": "夸克网盘空间已满，无法上传此备份（{size_mb}MB）。请前往夸克网盘清理空间或升级扩容后重试。"
+    },
     "download_no_url": {
       "message": "服务端未返回下载链接"
     },
