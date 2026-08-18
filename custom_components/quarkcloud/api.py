@@ -360,9 +360,10 @@ class QuarkCloudApi:
                 continue
             if data.get("status") == 0:
                 return data.get("data") or {}
+            # Prefer the human-readable agent_msg; fall back to error_info.
             error_info = (
-                data.get("error_info")
-                or data.get("agent_msg")
+                data.get("agent_msg")
+                or data.get("error_info")
                 or data.get("message")
                 or f"status={data.get('status')}"
             )

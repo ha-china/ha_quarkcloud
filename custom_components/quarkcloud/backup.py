@@ -205,15 +205,6 @@ class QuarkCloudBackupAgent(BackupAgent):
             await self.hass.async_add_executor_job(write_meta)
             await self._upload_local_file(meta_path, meta_name, parent_fid)
         except QuarkApiError as err:
-            if "capacity limit" in str(err) or "32003" in str(err):
-                # Drive is full (errno 32003): dedicated friendly message.
-                raise BackupAgentError(
-                    translation_domain=DOMAIN,
-                    translation_key="upload_capacity_limit",
-                    translation_placeholders={
-                        "size_mb": f"{backup.size / 1048576:.0f}",
-                    },
-                ) from err
             raise BackupAgentError(
                 translation_domain=DOMAIN,
                 translation_key="upload_failed",
