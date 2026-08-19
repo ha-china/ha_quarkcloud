@@ -9,5 +9,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/ha-china/ha_quarkcloud/issues",
   "requirements": [],
-  "version": "0.9.1"
+  "version": "0.9.2"
 }
