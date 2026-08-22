@@ -864,6 +864,43 @@ class QuarkCloudApi:
         if set(url_map) != set(part_numbers):
             raise QuarkApiError("missing upload urls")
 
+        # OSS V4 signatures embed X-Oss-Date and expire after ~15 minutes;
+        # PUTs then fail with RequestTimeTooSkewed. Like the CLI pipeline
+        # (which fetches urls per batch), re-fetch signed urls on demand
+        # when the per-url ``expired`` timestamp is close.
+        refresh_lock = asyncio.Lock()
+
+        def _entry(n: int) -> dict[str, Any]:
+            return next(e for e in part_info if e["part_number"] == n)
+
+        def _stale(target: dict[str, Any]) -> bool:
+            exp = target.get("expired")
+            return (
+                not isinstance(exp, (int, float))
+                or exp <= (time.time() + 60) * 1000
+            )
+
+        async def _refresh_url(info: dict[str, Any]) -> None:
+            n = info["part_number"]
+            target = url_map.get(n)
+            if target is not None and not _stale(target):
+                return
+            async with refresh_lock:
+                target = url_map.get(n)
+                if target is not None and not _stale(target):
+                    return
+                fresh = await self._request(
+                    "POST",
+                    PATH_GET_UPLOAD_URLS,
+                    body={"task_id": task_id, "part_info_list": [_entry(n)]},
+                )
+                for u in fresh.get("upload_urls") or []:
+                    url_map[u.get("part_number")] = u
+                if fresh.get("common_headers"):
+                    common_headers.clear()
+                    common_headers.update(fresh["common_headers"])
+                _LOGGER.debug("refreshed signed url for part %d", n)
+
         # CLI parity: up to maxConcurrentPartSize (6) parts in parallel,
         # sharing one session (keep-alive) across all PUTs.
         sem = asyncio.Semaphore(MAX_CONCURRENT_PART_UPLOADS)
@@ -883,6 +920,7 @@ class QuarkCloudApi:
                 last_err: Exception | None = None
                 for attempt in range(3):
                     try:
+                        await _refresh_url(info)
                         etag = await self._put_part(
                             url_map[n], chunk, common_headers, session=direct
                         )
@@ -893,6 +931,12 @@ class QuarkCloudApi:
                         _LOGGER.warning(
                             "part %d PUT attempt %d failed: %s", n, attempt + 1, err
                         )
+                        if "RequestTimeTooSkewed" in str(err):
+                            # Signature expired: force a url refresh and
+                            # retry immediately with a fresh one.
+                            if n in url_map:
+                                url_map[n]["expired"] = 0
+                            continue
                         await asyncio.sleep(0.5 * (2**attempt))
                 if last_err is not None:
                     raise last_err
@@ -901,7 +945,6 @@ class QuarkCloudApi:
                 on_progress(bytes_uploaded=uploaded)
             return {"part_number": n, "etag": etag}
 
-        connector = aiohttp.TCPConnector(limit=MAX_CONCURRENT_PART_UPLOADS)
         async with aiohttp.ClientSession(connector=connector) as direct:
             parts_etag = sorted(
                 await asyncio.gather(*(put_part(info) for info in part_info)),
