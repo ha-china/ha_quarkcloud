@@ -1,4 +1,6 @@
 {
   "name": "Quark Cloud Drive",
+  "zip_release": true,
+  "filename": "quarkcloud.zip",
   "homeassistant": "2025.12.0"
 }
