@@ -63,8 +63,14 @@ jobs:
 
       - name: Create zip
         run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            version="${{ steps.extract_version.outputs.version }}"
+          else
+            version="${{ github.ref_name }}"
+          fi
+          echo "zip_version=$version" >> $GITHUB_ENV
           cd "${{ github.workspace }}/custom_components/quarkcloud"
-          zip -r quarkcloud.zip ./
+          zip -r "quarkcloud_v${version}.zip" ./
 
       - name: Create GitHub Release
         if: github.event_name == 'push' && steps.check_tag.outputs.exists == 'false'
@@ -75,14 +81,14 @@ jobs:
           body: ${{ steps.changelog.outputs.changelog }}
           draft: false
           prerelease: false
-          files: ${{ github.workspace }}/custom_components/quarkcloud/quarkcloud.zip
+          files: ${{ github.workspace }}/custom_components/quarkcloud/quarkcloud_v${{ env.zip_version }}.zip
 
       - name: Upload release asset to existing release
         if: github.event_name == 'release'
         uses: svenstaro/upload-release-action@2.11.5
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/custom_components/quarkcloud/quarkcloud.zip
-          asset_name: quarkcloud.zip
+          file: ${{ github.workspace }}/custom_components/quarkcloud/quarkcloud_v${{ env.zip_version }}.zip
+          asset_name: quarkcloud_v${{ env.zip_version }}.zip
           tag: ${{ github.ref }}
           overwrite: true
