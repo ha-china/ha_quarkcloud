@@ -109,15 +109,19 @@ async def async_setup_entry(
         update_interval=UPDATE_INTERVAL,
     )
     await coordinator.async_refresh()
+    # A failed first refresh (e.g. token not yet rotated) must not crash
+    # platform setup: entities are created unavailable and the coordinator
+    # keeps retrying every UPDATE_INTERVAL until it succeeds.
+    data: dict[str, Any] = coordinator.data or {}
 
-    device_unique_id = coordinator.data.get("user_id") or entry.entry_id
+    device_unique_id = data.get("user_id") or entry.entry_id
     device = DeviceInfo(
         identifiers={(DOMAIN, device_unique_id)},
         name="Quark Cloud Drive",
         manufacturer="Quark",
-        model=coordinator.data.get("nickname") or "Quark Cloud Drive",
+        model=data.get("nickname") or "Quark Cloud Drive",
         sw_version="1.0.12",
-        serial_number=coordinator.data.get("user_id") or None,
+        serial_number=data.get("user_id") or None,
         configuration_url="https://pan.quark.cn",
     )
 
