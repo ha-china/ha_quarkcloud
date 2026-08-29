@@ -52,6 +52,7 @@ from .const import (
     UPLOAD_TIMEOUT,
     FORM_UPLOAD_SIZE_LIMIT,
     MAX_CONCURRENT_PART_UPLOADS,
+    TOKEN_RENEW_MARGIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -81,6 +82,15 @@ _SHA1_INIT = (0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0)
 
 _unpack16 = struct.Struct(">16I").unpack_from
 _M32 = 0xFFFFFFFF
+
+
+def _parse_expires_at(value: int | str) -> int:
+    """Normalize an epoch-ms token expiry (int/str) to an int; 0 if unknown."""
+    if isinstance(value, (int, float)) and value > 0:
+        return int(value)
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value)
+    return 0
 
 
 def _sha1_blocks(h: list[int], data: bytes) -> list[int]:
@@ -177,13 +187,15 @@ class QuarkCloudApi:
         refresh_token: str = "",
         device_id: str = DEFAULT_DEVICE_ID,
         user_id: str = "",
-        on_tokens_updated: Callable[[str, str, str, str], None] | None = None,
+        access_token_expires_at: int | str = 0,
+        on_tokens_updated: Callable[[str, str, str, str, int], None] | None = None,
     ) -> None:
         self._session = session
         self._access_token = access_token
         self._refresh_token = refresh_token
         self._device_id = device_id or DEFAULT_DEVICE_ID
         self._user_id = user_id
+        self._access_token_expires_at = _parse_expires_at(access_token_expires_at)
         self._on_tokens_updated = on_tokens_updated
         self._rotate_task: asyncio.Task[None] | None = None
 
@@ -192,7 +204,12 @@ class QuarkCloudApi:
         return self._user_id
 
     def set_tokens(
-        self, access_token: str, refresh_token: str, user_id: str, device_id: str
+        self,
+        access_token: str,
+        refresh_token: str,
+        user_id: str,
+        device_id: str,
+        access_token_expires_at: int | None = None,
     ) -> None:
         self._access_token = access_token
         if refresh_token:
@@ -201,6 +218,30 @@ class QuarkCloudApi:
             self._user_id = user_id
         if device_id:
             self._device_id = device_id
+        if access_token_expires_at:
+            self._access_token_expires_at = _parse_expires_at(
+                access_token_expires_at
+            )
+
+    def _token_expired(self) -> bool:
+        """True when the access token is expired or within the safety margin."""
+        if not self._access_token_expires_at:
+            # Expiry unknown - let the reactive 11001 path handle it.
+            return False
+        return (
+            self._access_token_expires_at
+            <= (time.time() + TOKEN_RENEW_MARGIN) * 1000
+        )
+
+    def _notify_tokens(self) -> None:
+        if self._on_tokens_updated:
+            self._on_tokens_updated(
+                self._access_token,
+                self._refresh_token,
+                self._user_id,
+                self._device_id,
+                self._access_token_expires_at,
+            )
 
     def _sign_headers(self, method: str, path: str) -> tuple[dict[str, str], str]:
         """Build signature headers exactly like the skill CLI does."""
@@ -313,13 +354,10 @@ class QuarkCloudApi:
             if new_token and new_token != self._access_token:
                 _LOGGER.debug("received x-new-access-token; persisting rotation")
                 self._access_token = new_token
-                if self._on_tokens_updated:
-                    self._on_tokens_updated(
-                        self._access_token,
-                        self._refresh_token,
-                        self._user_id,
-                        self._device_id,
-                    )
+                # Header rotation does not carry a new expiry; drop it so
+                # we fall back to on-demand renewal when it actually expires.
+                self._access_token_expires_at = 0
+                self._notify_tokens()
             if resp.status in (401, 403):
                 raise QuarkAuthError(data.get("error_info") or "unauthorized")
             return data
@@ -346,6 +384,10 @@ class QuarkCloudApi:
         """
         retried = False
         while True:
+            # Proactive renewal: if the token is expired (or close to it),
+            # rotate now so we never hit the server-side 11001 error path.
+            if self._token_expired():
+                await self._rotate_and_notify()
             try:
                 data = await self._raw_request(
                     method, path, no_query_auth=no_query_auth,
@@ -419,11 +461,9 @@ class QuarkCloudApi:
                 result.get("refresh_token", ""),
                 self._user_id,
                 self._device_id,
+                result.get("access_token_expires_at"),
             )
-            if self._on_tokens_updated:
-                self._on_tokens_updated(
-                    self._access_token, self._refresh_token, self._user_id, self._device_id
-                )
+            self._notify_tokens()
         except QuarkAuthError as err:
             _LOGGER.warning("Token rotation failed: %s", err)
 
@@ -536,6 +576,9 @@ class QuarkCloudApi:
         return {
             "access_token": inner["access_token"],
             "refresh_token": inner.get("refresh_token", ""),
+            "access_token_expires_at": _parse_expires_at(
+                inner.get("access_token_expires_at")
+            ),
             "expires_in": str(inner.get("expires_in", "")),
         }
 

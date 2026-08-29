@@ -34,7 +34,11 @@ async def async_setup_entry(
 
     @callback
     def persist_tokens(
-        access_token: str, refresh_token: str, user_id: str, device_id: str
+        access_token: str,
+        refresh_token: str,
+        user_id: str,
+        device_id: str,
+        access_token_expires_at: int = 0,
     ) -> None:
         """Persist rotated tokens so restarts keep working.
 
@@ -47,6 +51,8 @@ async def async_setup_entry(
             and entry.data.get(CONF_REFRESH_TOKEN) == refresh_token
             and entry.data.get(CONF_USER_ID) == user_id
             and entry.data.get(CONF_DEVICE_ID) == device_id
+            and str(entry.data.get(CONF_ACCESS_TOKEN_EXPIRES_AT, ""))
+            == str(access_token_expires_at)
         ):
             return
         hass.config_entries.async_update_entry(
@@ -57,6 +63,7 @@ async def async_setup_entry(
                 CONF_REFRESH_TOKEN: refresh_token,
                 CONF_USER_ID: user_id,
                 CONF_DEVICE_ID: device_id,
+                CONF_ACCESS_TOKEN_EXPIRES_AT: str(access_token_expires_at),
             },
         )
 
@@ -66,6 +73,7 @@ async def async_setup_entry(
         refresh_token=entry.data[CONF_REFRESH_TOKEN],
         device_id=entry.data[CONF_DEVICE_ID],
         user_id=entry.data[CONF_USER_ID],
+        access_token_expires_at=entry.data.get(CONF_ACCESS_TOKEN_EXPIRES_AT, 0),
         on_tokens_updated=persist_tokens,
     )
 

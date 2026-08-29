@@ -59,3 +59,6 @@ FORM_UPLOAD_SIZE_LIMIT: Final = 10 * 1024 * 1024
 
 # CLI parity: fn.maxConcurrentPartSize - concurrent part uploads.
 MAX_CONCURRENT_PART_UPLOADS: Final = 6
+
+# Renew the access token this many seconds before it expires.
+TOKEN_RENEW_MARGIN: Final = 60
