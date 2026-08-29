@@ -185,7 +185,7 @@ class QuarkCloudApi:
         self._device_id = device_id or DEFAULT_DEVICE_ID
         self._user_id = user_id
         self._on_tokens_updated = on_tokens_updated
-        self._rotating = False
+        self._rotate_task: asyncio.Task[None] | None = None
 
     @property
     def user_id(self) -> str:
@@ -391,15 +391,25 @@ class QuarkCloudApi:
     async def _rotate_and_notify(self) -> None:
         """Rotate the refresh token; failures never break the caller.
 
-        CLI parity (``handleTokenRefreshReplay``): a failing rotation is
-        only logged, and the original request is replayed with the current
-        token regardless - the server keeps it valid during a grace
-        period ("Refresh token rotation rate limited, current access
-        token still valid").
+        Concurrent callers (sensor coordinator + backup agent run in
+        parallel) await the in-flight rotation instead of skipping it -
+        returning early made them retry with the OLD token while the new
+        one was still being fetched, producing a burst of
+        "长效Access Token过期" errors at startup.
         """
-        if self._rotating:
+        if self._rotate_task is not None:
+            try:
+                await self._rotate_task
+            except Exception:  # noqa: BLE001 - the first caller logs it
+                pass
             return
-        self._rotating = True
+        self._rotate_task = asyncio.create_task(self._rotate())
+        try:
+            await self._rotate_task
+        finally:
+            self._rotate_task = None
+
+    async def _rotate(self) -> None:
         try:
             result = await self.rotate_refresh_token(
                 self._refresh_token, self._device_id
@@ -415,9 +425,7 @@ class QuarkCloudApi:
                     self._access_token, self._refresh_token, self._user_id, self._device_id
                 )
         except QuarkAuthError as err:
-            _LOGGER.debug("Token rotation failed, replaying with current token: %s", err)
-        finally:
-            self._rotating = False
+            _LOGGER.warning("Token rotation failed: %s", err)
 
     # ------------------------------------------------------------------
     # OAuth
