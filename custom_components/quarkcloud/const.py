@@ -17,7 +17,6 @@ AGENT_ID: Final = "homeassistant"
 
 API_BASE_URL: Final = "https://open-api-drive.quark.cn"
 
-PATH_GET_AUTHORIZE_PAGE_URL: Final = "/agent/v1/get_authorize_page_url"
 PATH_AGENT_AUTH_CODE: Final = "/agent/v1/oauth/agent_auth_code"
 PATH_TOKEN_ROTATE: Final = "/agent/v1/oauth/access_token/rotate"
 PATH_USER_INFO: Final = "/open/v1/user/info"

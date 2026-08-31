@@ -3,20 +3,37 @@
     "step": {
       "user": {
         "title": "Authorize Quark Cloud Drive",
-        "description": "1. Open the link below in your browser:\n\n[Open authorization link]({authorize_url})\n\n2. Scan the QR code with the Quark Drive app and confirm\n\n3. Paste the authorization code (starts with `AAC-`) you received below",
+        "description": "Paste a Quark Drive authorization code (starts with `AAC-` or `CAC-`); the integration exchanges it directly, no QR scanning needed.\n\nTo get a code: open the Quark Drive web → click the avatar (top-right) → select \"Drive Skill authorization\" → copy the code on the page. The code is masked; paste it into any text editor to view it.\n\nNote: codes are single-use and short-lived; paste it promptly after obtaining it.",
         "data": {
-          "auth_code": "Authorization code (AAC-)"
+          "auth_code": "Authorization code (AAC-/CAC-)"
         }
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to Quark Cloud Drive. Check your network and retry.",
-      "invalid_auth_code": "The authorization code is invalid. Scan again to get a new one; codes can only be used once.",
-      "expired": "The authorization code has expired. Scan again to get a new one.",
+      "invalid_auth_code": "The authorization code is invalid. Codes are single-use and short-lived; get a new one and retry.",
+      "expired": "The authorization code has expired. Get a new one.",
       "already_authorized": "This account is already authorized for this device. Revoke the authorization in the Quark app (Me → Login authorization management) or remove and re-add this integration entry."
     },
     "abort": {
       "single_instance_allowed": "Only one Quark Cloud Drive instance can be configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update authorization code",
+        "description": "Paste a new Quark Drive authorization code (starts with `AAC-` or `CAC-`) below; the integration exchanges it directly, no QR scanning needed here.\n\nTo get a code: Quark Drive web → avatar (top-right) → Drive Skill authorization. The code is masked; paste it into any text editor to view it.",
+        "data": {
+          "auth_code": "New authorization code (AAC-/CAC-)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Quark Cloud Drive. Check your network and retry.",
+      "invalid_auth_code": "The authorization code is invalid. Codes can only be used once; get a new one.",
+      "expired": "The authorization code has expired. Get a new one.",
+      "already_authorized": "This account is already authorized for this device. Revoke it in the Quark app (Me → Login authorization management) first."
     }
   },
   "entity": {

@@ -20,7 +20,7 @@ import hashlib
 import logging
 import struct
 import time
-from typing import Any
+from typing import Any, Final
 import uuid
 from urllib.parse import quote
 
@@ -38,7 +38,6 @@ from .const import (
     PATH_FILE_MOVE,
     PATH_FILE_DELETE,
     PATH_FILE_SEARCH,
-    PATH_GET_AUTHORIZE_PAGE_URL,
     PATH_GET_DOWNLOAD_URL,
     PATH_GET_UPLOAD_URLS,
     PATH_TOKEN_ROTATE,
@@ -72,6 +71,16 @@ class QuarkAuthCodeExpired(QuarkApiError):
 
 class QuarkAlreadyAuthorized(QuarkApiError):
     """The account is already bound to this device (second confirmation)."""
+
+
+# CLI 1.0.15 parity: post-login message by auth code exchange status
+# (install_confirmed = first authorization, anything else = re-login).
+_LOGIN_MSG: Final = {
+    "install_confirmed": (
+        "授权完成，当前网盘文件授权范围为全部文件，你可在"
+        "【夸克网盘App-我的-登录授权管理-其他AI助手授权】中，修改授权范围。"
+    ),
+}
 
 
 def _md5hex(text: str) -> str:
@@ -410,8 +419,11 @@ class QuarkCloudApi:
                 or f"status={data.get('status')}"
             )
             errno = data.get("errno")
-            if errno == 11000:
-                # CLI parity: handleAccessTokenNotAuth - relogin required.
+            if errno in (10001, 11000):
+                # 11000: CLI parity handleAccessTokenNotAuth - relogin
+                # required. 10001: "PAT identity validation failed" - the
+                # token/identity pair is no longer valid (revoked or the
+                # account was re-authorized elsewhere); relogin required.
                 raise QuarkAuthError(error_info)
             if not retried and (
                 errno in (11001, 11017, 12003, 12004)
@@ -471,45 +483,17 @@ class QuarkCloudApi:
     # OAuth
     # ------------------------------------------------------------------
 
-    async def get_authorize_page_url(
-        self,
-        device_name: str = "Home Assistant",
-        current_user_id: str = "",
+    async def exchange_agent_auth_code(
+        self, auth_code: str, device_name: str = "Home Assistant"
     ) -> dict[str, str]:
-        """Return the authorize page url the user opens to scan the QR code.
+        """Exchange the AAC-/CAC- code (pasted by the user) for tokens.
 
-        CLI parity: ``is_cloud_agent``/``is_unsure_agent`` are always sent
-        (stringified booleans); ``current_user_id`` only when one exists.
-        """
-        body: dict[str, Any] = {
-            "client_device_id": self._device_id,
-            "device_name": device_name,
-            "agent_id": AGENT_ID,
-            "client_id": CLIENT_ID,
-            "work_dir": "/config",
-            "is_cloud_agent": "false",
-            "is_unsure_agent": "false",
-        }
-        if current_user_id:
-            body["current_user_id"] = current_user_id
-        data = await self._raw_request(
-            "POST", PATH_GET_AUTHORIZE_PAGE_URL, auth_free=True, body=body
-        )
-        if data.get("status") != 0:
-            raise QuarkApiError(data.get("error_info") or "failed to get authorize url")
-        inner = data.get("data") or {}
-        return {
-            "authorize_page_url": inner.get("authorize_page_url", ""),
-            "page_code": inner.get("page_code", ""),
-            "device_id": inner.get("device_id", ""),
-        }
-
-    async def exchange_agent_auth_code(self, auth_code: str) -> dict[str, str]:
-        """Exchange the AAC-xxxx code (obtained after QR scan) for tokens.
-
-        Mirrors the skill CLI: any status other than ``expired`` /
-        ``second_confirmed`` is a success as long as ``access_token`` is
-        present (``confirmed`` is the normal response). In the
+        Mirrors the skill CLI 1.0.15: besides ``agent_auth_code`` the query
+        now carries ``client_device_id``/``device_name``/``agent_id``/
+        ``work_dir`` (skill 1.0.12 sent only the auth code). Any status
+        other than ``expired``/``second_confirmed`` is a success as long
+        as ``access_token`` is present (``confirmed`` is the normal
+        response, ``install_confirmed`` the first-install one). In the
         ``second_confirmed`` case the account is already bound to this
         device; the CLI reuses its locally stored token, here we rotate
         the returned refresh token instead.
@@ -518,7 +502,13 @@ class QuarkCloudApi:
             "GET",
             PATH_AGENT_AUTH_CODE,
             auth_free=True,
-            params={"agent_auth_code": auth_code.strip()},
+            params={
+                "agent_auth_code": auth_code.strip(),
+                "client_device_id": self._device_id,
+                "device_name": device_name,
+                "agent_id": AGENT_ID,
+                "work_dir": "/config",
+            },
         )
         if data.get("status") != 0:
             raise QuarkApiError(data.get("error_info") or data.get("agent_msg") or "invalid auth code")
@@ -541,6 +531,8 @@ class QuarkCloudApi:
                 "refresh_token_expires_at": "",
                 "device_id": device_id,
                 "user_id": inner.get("user_id", ""),
+                "status": status,
+                "msg": _LOGIN_MSG.get(status, ""),
             }
         access_token = inner.get("access_token")
         if not access_token:
@@ -555,6 +547,8 @@ class QuarkCloudApi:
             "refresh_token_expires_at": str(inner.get("refresh_token_expires_at", "")),
             "device_id": device_id,
             "user_id": inner.get("user_id", ""),
+            "status": status,
+            "msg": _LOGIN_MSG.get(status, ""),
         }
 
     async def rotate_refresh_token(

@@ -25,31 +25,33 @@
 
 ## 添加集成
 
-1. 设置 → 设备与服务 → 右下角 **添加集成**
+1. 设置 → 设备与服务 → 右下角 **添加集成**，搜索 **Quark Cloud Drive** 并点击
 
    ![添加集成](img/add_integration.png)
 
-2. 搜索 **Quark Cloud Drive** 并点击
+2. 打开[夸克网盘网页版](https://pan.quark.cn)，点击右上角头像，选择 **网盘Skill授权**
 
-3. 点击授权链接，在浏览器中打开
+   ![打开网盘Skill授权](img/open_the_link.png)
 
-   ![打开授权链接](img/open_the_link.png)
-
-4. 用 **夸克网盘 App / 夸克 App** 扫码确认授权
-
-   ![扫码授权](img/scan_qrcode.png)
-
-5. 授权后会得到一个 `AAC-` 开头的授权码，复制它
+3. 在页面中复制授权码（`AAC-`/`CAC-` 开头）。页面上授权码默认隐藏显示，将其粘贴到任意记事本即可查看完整授权码
 
    ![复制授权码](img/get_code.png)
 
-6. 将授权码粘贴到 HA 表单中
+4. 将授权码粘贴到 HA 表单中，集成自动兑换完成登录
 
    ![填写授权码](img/fill_the_code.png)
 
-7. 集成兑换授权码完成登录（授权码一次性、短时效，过期重新扫码即可）
+5. 授权码一次性且短时效，过期重新获取即可
 
 ## 使用
+
+### 更新授权码
+
+授权失效（如传感器一直显示不可用、日志出现 `PAT identity validation failed`）时，无需删除集成重新添加：
+
+设置 → 设备与服务 → Quark Cloud Drive → **配置**，直接粘贴新获取的授权码即可。集成会自动兑换新授权码并重载。
+
+获取新授权码的方式与首次添加相同：夸克网盘网页版 → 右上角头像 → 网盘Skill授权。
 
 ### 云端备份（Backup Agent）
 
@@ -90,7 +92,7 @@ custom_components/quarkcloud/
 ├── api.py             # API 客户端（认证/上传/下载/文件操作）
 ├── backup.py          # BackupAgent 实现
 ├── sensor.py          # 设备与传感器
-├── config_flow.py     # 扫码授权流程
+├── config_flow.py     # 扫码授权流程 + 更新授权码设置
 ├── const.py           # 常量与端点
 ├── brand/             # 品牌图标
 └── translations/      # en / zh-Hans
