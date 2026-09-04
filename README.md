@@ -29,7 +29,7 @@
 
    ![添加集成](img/add_integration.png)
 
-2. 打开[夸克网盘网页版](https://pan.quark.cn)，点击右上角头像，选择 **网盘Skill授权**
+2. 打开**夸克电脑客户端**，点击右上角头像，选择 **网盘Skill授权**
 
    ![打开网盘Skill授权](img/open_the_link.png)
 
@@ -51,7 +51,7 @@
 
 设置 → 设备与服务 → Quark Cloud Drive → **配置**，直接粘贴新获取的授权码即可。集成会自动兑换新授权码并重载。
 
-获取新授权码的方式与首次添加相同：夸克网盘网页版 → 右上角头像 → 网盘Skill授权。
+获取新授权码的方式与首次添加相同：夸克电脑客户端 → 右上角头像 → 网盘Skill授权。
 
 ### 云端备份（Backup Agent）
 
@@ -92,7 +92,7 @@ custom_components/quarkcloud/
 ├── api.py             # API 客户端（认证/上传/下载/文件操作）
 ├── backup.py          # BackupAgent 实现
 ├── sensor.py          # 设备与传感器
-├── config_flow.py     # 扫码授权流程 + 更新授权码设置
+├── config_flow.py     # 授权码输入流程 + 更新授权码设置
 ├── const.py           # 常量与端点
 ├── brand/             # 品牌图标
 └── translations/      # en / zh-Hans

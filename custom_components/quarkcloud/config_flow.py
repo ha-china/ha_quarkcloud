@@ -3,7 +3,7 @@
 Authorization is code-based (no QR scanning inside Home Assistant):
 
 1. The user obtains an ``AAC-``/``CAC-`` agent auth code from the Quark
-   Drive web (avatar menu -> Drive Skill authorization).
+   desktop client (avatar menu -> Drive Skill authorization).
 2. The code is pasted here and exchanged for tokens.
 
 An options flow lets the user paste a new code later (settings →

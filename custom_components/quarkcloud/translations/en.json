@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Authorize Quark Cloud Drive",
-        "description": "Paste a Quark Drive authorization code (starts with `AAC-` or `CAC-`); the integration exchanges it directly, no QR scanning needed.\n\nTo get a code: open the Quark Drive web → click the avatar (top-right) → select \"Drive Skill authorization\" → copy the code on the page. The code is masked; paste it into any text editor to view it.\n\nNote: codes are single-use and short-lived; paste it promptly after obtaining it.",
+        "description": "Paste a Quark Drive authorization code (starts with `AAC-` or `CAC-`); the integration exchanges it directly, no QR scanning needed.\n\nTo get a code: open the Quark desktop client → click the avatar (top-right) → select \"Drive Skill authorization\" → copy the code on the page. The code is masked; paste it into any text editor to view it.\n\nNote: codes are single-use and short-lived; paste it promptly after obtaining it.",
         "data": {
           "auth_code": "Authorization code (AAC-/CAC-)"
         }
@@ -23,7 +23,7 @@
     "step": {
       "init": {
         "title": "Update authorization code",
-        "description": "Paste a new Quark Drive authorization code (starts with `AAC-` or `CAC-`) below; the integration exchanges it directly, no QR scanning needed here.\n\nTo get a code: Quark Drive web → avatar (top-right) → Drive Skill authorization. The code is masked; paste it into any text editor to view it.",
+        "description": "Paste a new Quark Drive authorization code (starts with `AAC-` or `CAC-`) below; the integration exchanges it directly, no QR scanning needed here.\n\nTo get a code: Quark desktop client → avatar (top-right) → Drive Skill authorization. The code is masked; paste it into any text editor to view it.",
         "data": {
           "auth_code": "New authorization code (AAC-/CAC-)"
         }
