@@ -158,6 +158,23 @@ def _sha1_context_state(data: bytes) -> list[int]:
     return _sha1_blocks(list(_SHA1_INIT), data[:full_blocks])
 
 
+def _hashes_only(
+    read_at: Callable[[int, int], bytes],
+    file_size: int,
+) -> tuple[str, str]:
+    """Streaming full-file sha1+md5 (hashlib, C speed)."""
+    sha1 = hashlib.sha1()
+    md5 = hashlib.md5()
+    pos = 0
+    step = 4 * 1024 * 1024
+    while pos < file_size:
+        chunk = read_at(pos, min(pos + step, file_size))
+        sha1.update(chunk)
+        md5.update(chunk)
+        pos += len(chunk)
+    return sha1.hexdigest(), md5.hexdigest()
+
+
 def _hashes_and_part_states(
     read_at: Callable[[int, int], bytes],
     file_size: int,
@@ -209,6 +226,9 @@ class QuarkCloudApi:
         self._access_token_expires_at = _parse_expires_at(access_token_expires_at)
         self._on_tokens_updated = on_tokens_updated
         self._rotate_task: asyncio.Task[None] | None = None
+        # Set when the server rejects uploads without per-part SHA1
+        # states, so subsequent uploads skip the fast attempt.
+        self._upload_needs_ctx = False
 
     @property
     def user_id(self) -> str:
@@ -873,9 +893,54 @@ class QuarkCloudApi:
     ) -> dict[str, Any]:
         """PrepositiveUpload strategy (files >= 10MB in the skill CLI).
 
-        One hash pass computes sha1+md5+part states together after
-        ``upload_pre`` returns the server's part size.
+        Fast path first: skip the per-part SHA1 states entirely so the
+        only hashing is hashlib (C speed). The pure-Python state pass
+        ran at ~1MB/s and dominated large uploads. The server uses the
+        states for incremental verification; CLI evidence shows parts
+        without states are accepted (its own part 1 ships none). If the
+        server still rejects the task, retry once with the full states
+        and remember it for this session.
         """
+        if not self._upload_needs_ctx:
+            try:
+                return await self._upload_large_impl(
+                    filename,
+                    pdir_fid,
+                    size,
+                    read_at,
+                    content_type,
+                    on_progress,
+                    with_ctx=False,
+                )
+            except QuarkApiError as err:
+                _LOGGER.info(
+                    "fast upload without SHA1 states failed (%s); "
+                    "retrying with per-part states",
+                    err,
+                )
+                self._upload_needs_ctx = True
+        return await self._upload_large_impl(
+            filename,
+            pdir_fid,
+            size,
+            read_at,
+            content_type,
+            on_progress,
+            with_ctx=True,
+        )
+
+    async def _upload_large_impl(
+        self,
+        filename: str,
+        pdir_fid: str,
+        size: int,
+        read_at: Callable[[int, int], bytes],
+        content_type: str,
+        on_progress: Callable[[int], None] | None,
+        *,
+        with_ctx: bool,
+    ) -> dict[str, Any]:
+        """One upload attempt; ``with_ctx`` selects the hashing strategy."""
         body = await self._upload_pre_body(
             filename, pdir_fid, content_type, read_at, size
         )
@@ -890,17 +955,23 @@ class QuarkCloudApi:
             raise QuarkApiError("upload_pre returned no task")
 
         part_numbers = list(range(1, (size + part_size - 1) // part_size + 1))
-        # Single pass: hashlib sha1/md5 + SHA1 state at each part boundary
-        # (the server requires them for its parallel hash pipeline).
-        _LOGGER.debug(
-            "hashing file once (%d bytes, part_size=%d, %d parts)",
-            size,
-            part_size,
-            len(part_numbers),
-        )
-        sha1, md5, states = await asyncio.to_thread(
-            _hashes_and_part_states, read_at, size, part_size
-        )
+        if with_ctx:
+            # Single pass: hashlib sha1/md5 + SHA1 state at each part
+            # boundary (the server uses them for its parallel hash
+            # pipeline). Pure-Python SHA1 compression - slow (~1MB/s).
+            _LOGGER.debug(
+                "hashing file once with per-part states "
+                "(%d bytes, part_size=%d, %d parts)",
+                size,
+                part_size,
+                len(part_numbers),
+            )
+            sha1, md5, states = await asyncio.to_thread(
+                _hashes_and_part_states, read_at, size, part_size
+            )
+        else:
+            sha1, md5 = await asyncio.to_thread(_hashes_only, read_at, size)
+            states = {}
 
         upd = await self._request(
             "POST",
@@ -916,7 +987,7 @@ class QuarkCloudApi:
                 "part_number": n,
                 "part_size": min(part_size, size - (n - 1) * part_size),
             }
-            if n > 1:
+            if with_ctx and n > 1:
                 entry["parallel_sha1_ctx"] = {
                     "part_offset": (n - 1) * part_size,
                     "h": states[n - 1],
