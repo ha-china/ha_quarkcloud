@@ -60,5 +60,10 @@ FORM_UPLOAD_SIZE_LIMIT: Final = 10 * 1024 * 1024
 # CLI parity: fn.maxConcurrentPartSize - concurrent part uploads.
 MAX_CONCURRENT_PART_UPLOADS: Final = 6
 
+# CLI parity (1.0.22, hE=100): get_upload_urls is requested in batches
+# of at most 100 parts; requesting all parts at once fails with
+# "part list exceed" on large files.
+PARTS_PER_URL_BATCH: Final = 100
+
 # Renew the access token this many seconds before it expires.
 TOKEN_RENEW_MARGIN: Final = 60

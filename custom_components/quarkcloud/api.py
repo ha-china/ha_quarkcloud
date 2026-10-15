@@ -52,6 +52,7 @@ from .const import (
     UPLOAD_TIMEOUT,
     FORM_UPLOAD_SIZE_LIMIT,
     MAX_CONCURRENT_PART_UPLOADS,
+    PARTS_PER_URL_BATCH,
     TOKEN_RENEW_MARGIN,
 )
 
@@ -770,10 +771,13 @@ class QuarkCloudApi:
           single-part ``part_info_list`` carrying the SHA1 running state,
           PUT via the url returned by upload_pre, finish with the ETag.
         - otherwise -> PrepositiveUpload: upload_pre with ``hash_update``
-          and empty sha1, then ``update/hash``, ``get_upload_urls``,
-          PUT every part (signed), finish with ETags.
+          and empty sha1, then ``update/hash``, ``get_upload_urls`` in
+          batches of at most 100 parts (CLI parity), PUT every part
+          (signed, bounded concurrency), finish with ETags.
 
-        Hashes are computed internally (single pass).
+        The file is never loaded into memory as a whole: hashes are
+        computed in a single streaming pass and parts are read one at a
+        time (bounded by the concurrency limit).
         """
         if size < FORM_UPLOAD_SIZE_LIMIT:
             return await self._upload_small(
@@ -918,39 +922,26 @@ class QuarkCloudApi:
                     "h": states[n - 1],
                 }
             part_info.append(entry)
-        try:
-            urls_data = await self._request(
-                "POST",
-                PATH_GET_UPLOAD_URLS,
-                body={"task_id": task_id, "part_info_list": part_info},
-            )
-        except QuarkApiError as err:
-            _LOGGER.warning(
-                "get_upload_urls failed (%s); falling back to single-part upload",
-                err,
-            )
-            return await self._upload_small(
-                filename, pdir_fid, size, read_at, content_type, on_progress
-            )
-        common_headers: dict[str, str] = (
-            urls_data.get("common_headers")
-            or pre.get("common_headers")
-            or {}
-        )
-        url_map = {
-            u.get("part_number"): u for u in urls_data.get("upload_urls") or []
-        }
-        if set(url_map) != set(part_numbers):
-            raise QuarkApiError("missing upload urls")
-
-        # OSS V4 signatures embed X-Oss-Date and expire after ~15 minutes;
-        # PUTs then fail with RequestTimeTooSkewed. Like the CLI pipeline
-        # (which fetches urls per batch), re-fetch signed urls on demand
-        # when the per-url ``expired`` timestamp is close.
-        refresh_lock = asyncio.Lock()
 
         def _entry(n: int) -> dict[str, Any]:
             return next(e for e in part_info if e["part_number"] == n)
+
+        # CLI parity (1.0.22, hE=100): upload urls are requested in
+        # batches of at most 100 parts. Requesting every part at once
+        # fails with "part list exceed" on large files - and the old
+        # fallback loaded the whole file into memory. Batching keeps
+        # peak memory at ~6 concurrent part chunks instead.
+        batches = [
+            part_info[i : i + PARTS_PER_URL_BATCH]
+            for i in range(0, len(part_info), PARTS_PER_URL_BATCH)
+        ]
+
+        # OSS V4 signatures embed X-Oss-Date and expire after ~15 minutes;
+        # PUTs then fail with RequestTimeTooSkewed. Re-fetch signed urls
+        # on demand when the per-url ``expired`` timestamp is close.
+        refresh_lock = asyncio.Lock()
+        url_map: dict[int, dict[str, Any]] = {}
+        common_headers: dict[str, str] = dict(pre.get("common_headers") or {})
 
         def _stale(target: dict[str, Any]) -> bool:
             exp = target.get("expired")
@@ -986,7 +977,7 @@ class QuarkCloudApi:
         uploaded = 0
         connector = aiohttp.TCPConnector(limit=MAX_CONCURRENT_PART_UPLOADS)
 
-        async def put_part(info: dict[str, Any]) -> dict[str, Any]:
+        async def put_part(info: dict[str, Any], session: aiohttp.ClientSession) -> dict[str, Any]:
             nonlocal uploaded
             n = info["part_number"]
             start = (n - 1) * part_size
@@ -1001,7 +992,7 @@ class QuarkCloudApi:
                     try:
                         await _refresh_url(info)
                         etag = await self._put_part(
-                            url_map[n], chunk, common_headers, session=direct
+                            url_map[n], chunk, common_headers, session=session
                         )
                         last_err = None
                         break
@@ -1024,11 +1015,41 @@ class QuarkCloudApi:
                 on_progress(bytes_uploaded=uploaded)
             return {"part_number": n, "etag": etag}
 
+        parts_etag: list[dict[str, Any]] = []
         async with aiohttp.ClientSession(connector=connector) as direct:
-            parts_etag = sorted(
-                await asyncio.gather(*(put_part(info) for info in part_info)),
-                key=lambda p: p["part_number"],
-            )
+            for batch_index, batch in enumerate(batches):
+                urls_data = await self._request(
+                    "POST",
+                    PATH_GET_UPLOAD_URLS,
+                    body={
+                        "task_id": task_id,
+                        "part_info_list": batch,
+                    },
+                )
+                url_map.clear()
+                url_map.update(
+                    {
+                        u.get("part_number"): u
+                        for u in urls_data.get("upload_urls") or []
+                    }
+                )
+                if set(url_map) != {e["part_number"] for e in batch}:
+                    raise QuarkApiError("missing upload urls")
+                if urls_data.get("common_headers"):
+                    common_headers.clear()
+                    common_headers.update(urls_data["common_headers"])
+                _LOGGER.debug(
+                    "upload batch %d/%d: %d parts",
+                    batch_index + 1,
+                    len(batches),
+                    len(batch),
+                )
+                parts_etag.extend(
+                    await asyncio.gather(
+                        *(put_part(info, direct) for info in batch)
+                    )
+                )
+        parts_etag.sort(key=lambda p: p["part_number"])
 
         finish = await self._request(
             "POST",
