@@ -968,8 +968,20 @@ class QuarkCloudApi:
                 _LOGGER.debug("refreshed signed url for part %d", n)
 
         # CLI parity: up to maxConcurrentPartSize (6) parts in parallel,
-        # sharing one session (keep-alive) across all PUTs.
-        sem = asyncio.Semaphore(MAX_CONCURRENT_PART_UPLOADS)
+        # sharing one session (keep-alive) across all PUTs. Concurrency
+        # scales DOWN for large parts: each in-flight part holds a
+        # part_size buffer, so the buffer pool stays under ~192MB no
+        # matter how big the server's part_size is (a 2.2GB backup with
+        # ~128MB parts at 6x was a ~1GB memory spike).
+        sem = asyncio.Semaphore(
+            max(
+                1,
+                min(
+                    MAX_CONCURRENT_PART_UPLOADS,
+                    (192 * 1024 * 1024) // max(part_size, 1),
+                ),
+            )
+        )
         uploaded = 0
         connector = aiohttp.TCPConnector(limit=MAX_CONCURRENT_PART_UPLOADS)
 
