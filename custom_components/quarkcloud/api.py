@@ -49,10 +49,10 @@ from .const import (
     PATH_UPDATE_HASH,
     REQUEST_TIMEOUT,
     SIGN_KEY,
+    PARTS_PER_URL_BATCH,
     UPLOAD_TIMEOUT,
     FORM_UPLOAD_SIZE_LIMIT,
     MAX_CONCURRENT_PART_UPLOADS,
-    PARTS_PER_URL_BATCH,
     TOKEN_RENEW_MARGIN,
 )
 
@@ -158,23 +158,6 @@ def _sha1_context_state(data: bytes) -> list[int]:
     return _sha1_blocks(list(_SHA1_INIT), data[:full_blocks])
 
 
-def _hashes_only(
-    read_at: Callable[[int, int], bytes],
-    file_size: int,
-) -> tuple[str, str]:
-    """Streaming full-file sha1+md5 (hashlib, C speed)."""
-    sha1 = hashlib.sha1()
-    md5 = hashlib.md5()
-    pos = 0
-    step = 4 * 1024 * 1024
-    while pos < file_size:
-        chunk = read_at(pos, min(pos + step, file_size))
-        sha1.update(chunk)
-        md5.update(chunk)
-        pos += len(chunk)
-    return sha1.hexdigest(), md5.hexdigest()
-
-
 def _hashes_and_part_states(
     read_at: Callable[[int, int], bytes],
     file_size: int,
@@ -226,9 +209,6 @@ class QuarkCloudApi:
         self._access_token_expires_at = _parse_expires_at(access_token_expires_at)
         self._on_tokens_updated = on_tokens_updated
         self._rotate_task: asyncio.Task[None] | None = None
-        # Set when the server rejects uploads without per-part SHA1
-        # states, so subsequent uploads skip the fast attempt.
-        self._upload_needs_ctx = False
 
     @property
     def user_id(self) -> str:
@@ -791,13 +771,10 @@ class QuarkCloudApi:
           single-part ``part_info_list`` carrying the SHA1 running state,
           PUT via the url returned by upload_pre, finish with the ETag.
         - otherwise -> PrepositiveUpload: upload_pre with ``hash_update``
-          and empty sha1, then ``update/hash``, ``get_upload_urls`` in
-          batches of at most 100 parts (CLI parity), PUT every part
-          (signed, bounded concurrency), finish with ETags.
+          and empty sha1, then ``update/hash``, ``get_upload_urls``,
+          PUT every part (signed), finish with ETags.
 
-        The file is never loaded into memory as a whole: hashes are
-        computed in a single streaming pass and parts are read one at a
-        time (bounded by the concurrency limit).
+        Hashes are computed internally (single pass).
         """
         if size < FORM_UPLOAD_SIZE_LIMIT:
             return await self._upload_small(
@@ -893,54 +870,9 @@ class QuarkCloudApi:
     ) -> dict[str, Any]:
         """PrepositiveUpload strategy (files >= 10MB in the skill CLI).
 
-        Fast path first: skip the per-part SHA1 states entirely so the
-        only hashing is hashlib (C speed). The pure-Python state pass
-        ran at ~1MB/s and dominated large uploads. The server uses the
-        states for incremental verification; CLI evidence shows parts
-        without states are accepted (its own part 1 ships none). If the
-        server still rejects the task, retry once with the full states
-        and remember it for this session.
+        One hash pass computes sha1+md5+part states together after
+        ``upload_pre`` returns the server's part size.
         """
-        if not self._upload_needs_ctx:
-            try:
-                return await self._upload_large_impl(
-                    filename,
-                    pdir_fid,
-                    size,
-                    read_at,
-                    content_type,
-                    on_progress,
-                    with_ctx=False,
-                )
-            except QuarkApiError as err:
-                _LOGGER.info(
-                    "fast upload without SHA1 states failed (%s); "
-                    "retrying with per-part states",
-                    err,
-                )
-                self._upload_needs_ctx = True
-        return await self._upload_large_impl(
-            filename,
-            pdir_fid,
-            size,
-            read_at,
-            content_type,
-            on_progress,
-            with_ctx=True,
-        )
-
-    async def _upload_large_impl(
-        self,
-        filename: str,
-        pdir_fid: str,
-        size: int,
-        read_at: Callable[[int, int], bytes],
-        content_type: str,
-        on_progress: Callable[[int], None] | None,
-        *,
-        with_ctx: bool,
-    ) -> dict[str, Any]:
-        """One upload attempt; ``with_ctx`` selects the hashing strategy."""
         body = await self._upload_pre_body(
             filename, pdir_fid, content_type, read_at, size
         )
@@ -955,23 +887,17 @@ class QuarkCloudApi:
             raise QuarkApiError("upload_pre returned no task")
 
         part_numbers = list(range(1, (size + part_size - 1) // part_size + 1))
-        if with_ctx:
-            # Single pass: hashlib sha1/md5 + SHA1 state at each part
-            # boundary (the server uses them for its parallel hash
-            # pipeline). Pure-Python SHA1 compression - slow (~1MB/s).
-            _LOGGER.debug(
-                "hashing file once with per-part states "
-                "(%d bytes, part_size=%d, %d parts)",
-                size,
-                part_size,
-                len(part_numbers),
-            )
-            sha1, md5, states = await asyncio.to_thread(
-                _hashes_and_part_states, read_at, size, part_size
-            )
-        else:
-            sha1, md5 = await asyncio.to_thread(_hashes_only, read_at, size)
-            states = {}
+        # Single pass: hashlib sha1/md5 + SHA1 state at each part boundary
+        # (the server requires them for its parallel hash pipeline).
+        _LOGGER.debug(
+            "hashing file once (%d bytes, part_size=%d, %d parts)",
+            size,
+            part_size,
+            len(part_numbers),
+        )
+        sha1, md5, states = await asyncio.to_thread(
+            _hashes_and_part_states, read_at, size, part_size
+        )
 
         upd = await self._request(
             "POST",
@@ -987,32 +913,31 @@ class QuarkCloudApi:
                 "part_number": n,
                 "part_size": min(part_size, size - (n - 1) * part_size),
             }
-            if with_ctx and n > 1:
+            if n > 1:
                 entry["parallel_sha1_ctx"] = {
                     "part_offset": (n - 1) * part_size,
                     "h": states[n - 1],
                 }
             part_info.append(entry)
-
-        def _entry(n: int) -> dict[str, Any]:
-            return next(e for e in part_info if e["part_number"] == n)
-
-        # CLI parity (1.0.22, hE=100): upload urls are requested in
-        # batches of at most 100 parts. Requesting every part at once
-        # fails with "part list exceed" on large files - and the old
-        # fallback loaded the whole file into memory. Batching keeps
-        # peak memory at ~6 concurrent part chunks instead.
+        # Large files exceed the server's per-request part limit
+        # ("part list exceed"): upload urls are fetched in batches of
+        # 100 parts, one batch uploaded before the next is fetched
+        # (CLI uploadWithHashPipeline parity).
         batches = [
             part_info[i : i + PARTS_PER_URL_BATCH]
             for i in range(0, len(part_info), PARTS_PER_URL_BATCH)
         ]
-
-        # OSS V4 signatures embed X-Oss-Date and expire after ~15 minutes;
-        # PUTs then fail with RequestTimeTooSkewed. Re-fetch signed urls
-        # on demand when the per-url ``expired`` timestamp is close.
-        refresh_lock = asyncio.Lock()
         url_map: dict[int, dict[str, Any]] = {}
         common_headers: dict[str, str] = dict(pre.get("common_headers") or {})
+
+        # OSS V4 signatures embed X-Oss-Date and expire after ~15 minutes;
+        # PUTs then fail with RequestTimeTooSkewed. Like the CLI pipeline
+        # (which fetches urls per batch), re-fetch signed urls on demand
+        # when the per-url ``expired`` timestamp is close.
+        refresh_lock = asyncio.Lock()
+
+        def _entry(n: int) -> dict[str, Any]:
+            return next(e for e in part_info if e["part_number"] == n)
 
         def _stale(target: dict[str, Any]) -> bool:
             exp = target.get("expired")
@@ -1048,7 +973,7 @@ class QuarkCloudApi:
         uploaded = 0
         connector = aiohttp.TCPConnector(limit=MAX_CONCURRENT_PART_UPLOADS)
 
-        async def put_part(info: dict[str, Any], session: aiohttp.ClientSession) -> dict[str, Any]:
+        async def put_part(info: dict[str, Any]) -> dict[str, Any]:
             nonlocal uploaded
             n = info["part_number"]
             start = (n - 1) * part_size
@@ -1063,7 +988,7 @@ class QuarkCloudApi:
                     try:
                         await _refresh_url(info)
                         etag = await self._put_part(
-                            url_map[n], chunk, common_headers, session=session
+                            url_map[n], chunk, common_headers, session=direct
                         )
                         last_err = None
                         break
@@ -1088,39 +1013,34 @@ class QuarkCloudApi:
 
         parts_etag: list[dict[str, Any]] = []
         async with aiohttp.ClientSession(connector=connector) as direct:
-            for batch_index, batch in enumerate(batches):
+            for batch_idx, batch in enumerate(batches):
                 urls_data = await self._request(
                     "POST",
                     PATH_GET_UPLOAD_URLS,
-                    body={
-                        "task_id": task_id,
-                        "part_info_list": batch,
-                    },
+                    body={"task_id": task_id, "part_info_list": batch},
                 )
-                url_map.clear()
-                url_map.update(
-                    {
-                        u.get("part_number"): u
-                        for u in urls_data.get("upload_urls") or []
-                    }
-                )
-                if set(url_map) != {e["part_number"] for e in batch}:
+                got = {
+                    u.get("part_number"): u
+                    for u in urls_data.get("upload_urls") or []
+                }
+                if set(got) != {e["part_number"] for e in batch}:
                     raise QuarkApiError("missing upload urls")
+                url_map.clear()
+                url_map.update(got)
                 if urls_data.get("common_headers"):
                     common_headers.clear()
                     common_headers.update(urls_data["common_headers"])
                 _LOGGER.debug(
-                    "upload batch %d/%d: %d parts",
-                    batch_index + 1,
+                    "upload url batch %d/%d: %d parts",
+                    batch_idx + 1,
                     len(batches),
                     len(batch),
                 )
-                parts_etag.extend(
-                    await asyncio.gather(
-                        *(put_part(info, direct) for info in batch)
-                    )
+                batch_etags = await asyncio.gather(
+                    *(put_part(info) for info in batch)
                 )
-        parts_etag.sort(key=lambda p: p["part_number"])
+                parts_etag.extend(batch_etags)
+        parts_etag = sorted(parts_etag, key=lambda p: p["part_number"])
 
         finish = await self._request(
             "POST",

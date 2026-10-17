@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 import json
 import logging
 import os
-import tempfile
 import time
 from typing import Any
 
@@ -175,7 +174,15 @@ class QuarkCloudBackupAgent(BackupAgent):
         """Upload a backup: spool to disk, hash, upload tar + metadata."""
         tar_name, meta_name = _filenames(backup)
         parent_fid = await self._ensure_dir(BACKUP_DIR_NAME)
-        tmp_dir = tempfile.gettempdir()
+        # Spool on the HA data partition (disk), NOT tempfile.gettempdir()
+        # (/tmp is a RAM-backed tmpfs on HA OS - spooling there is what
+        # ate memory). Removed right after the upload completes.
+        tmp_dir = self.hass.config.path("quark_upload_tmp")
+
+        def _makedirs() -> None:
+            os.makedirs(tmp_dir, exist_ok=True)
+
+        await self.hass.async_add_executor_job(_makedirs)
         tar_path = os.path.join(tmp_dir, f"quark_{tar_name}")
         meta_path = os.path.join(tmp_dir, f"quark_{meta_name}")
         try:

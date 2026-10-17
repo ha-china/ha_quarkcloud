@@ -120,7 +120,7 @@ async def async_setup_entry(
         name="Quark Cloud Drive",
         manufacturer="Quark",
         model=data.get("nickname") or "Quark Cloud Drive",
-        sw_version="1.0.19",
+        sw_version="1.0.24",
         serial_number=data.get("user_id") or None,
         configuration_url="https://pan.quark.cn",
     )
